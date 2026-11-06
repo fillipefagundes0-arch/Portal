@@ -1,0 +1,46 @@
+@page "/instrumento/{Id:int}"
+@inject PortalService Service
+@inject NavigationManager Navigation
+<PageTitle>Ficha do instrumento</PageTitle>
+<a href="/">← Instrumentos</a>
+<h1>@(Id == 0 ? "Cadastrar instrumento" : instrument?.Tag ?? "Instrumento")</h1>
+@if (message is not null) { <p class="message" role="status">@message</p> }
+@if (instrument is not null && user is not null) {
+ <EditForm Model="instrument" OnValidSubmit="SaveDetails" FormName="instrument"><DataAnnotationsValidator /><ValidationSummary />
+ <section class="card"><h2>Identificação e especificação</h2><fieldset disabled="@(user.Profile == AccessProfile.Visualizacao || busy)"><div class="grid">
+ <label>TAG *<InputText @bind-Value="instrument.Tag" /></label><label>Descrição *<InputText @bind-Value="instrument.Description" /></label>
+ <label>Área<InputText @bind-Value="instrument.Area" /></label><label>Localização<InputText @bind-Value="instrument.Location" /></label>
+ <label>Fabricante<InputText @bind-Value="instrument.Manufacturer" /></label><label>Modelo<InputText @bind-Value="instrument.Model" /></label>
+ <label>Número de série<InputText @bind-Value="instrument.SerialNumber" /></label><label>Faixa de medição<InputText @bind-Value="instrument.Range" /></label><label>Unidade<InputText @bind-Value="instrument.Unit" /></label>
+ </div>@if (user.Profile != AccessProfile.Visualizacao) { <button disabled="@busy">Salvar cadastro</button> }</fieldset>
+ @if (Id != 0) { <p class="muted">Última alteração: @instrument.UpdatedAt.ToString("dd/MM/yyyy HH:mm") UTC · @instrument.UpdatedBy</p> }</section></EditForm>
+ @if (Id != 0) {
+ <section class="card"><div class="heading"><h2>Alarmes <span class="badge">@instrument.Alarms.Count</span></h2>@if (user.Profile == AccessProfile.Automacao) { <button type="button" class="secondary" @onclick="AddAlarm">+ Adicionar alarme</button> }</div>
+ <p class="muted">Registre as causas, efeitos e ações de cada alarme. Esta ficha documenta alarmes; não recebe sinais em tempo real.</p>
+ @foreach (var alarm in instrument.Alarms) {
+ <fieldset @key="alarm" disabled="@(user.Profile != AccessProfile.Automacao || busy)" class="alarm"><legend>@(string.IsNullOrEmpty(alarm.Code) ? "Novo alarme" : alarm.Code)</legend><div class="grid">
+ <label>Código *<input @bind="alarm.Code" maxlength="80" /></label><label>Descrição *<input @bind="alarm.Description" maxlength="300" /></label>
+ <label>Prioridade<select @bind="alarm.Priority"><option>Baixa</option><option>Média</option><option>Alta</option><option>Crítica</option></select></label>
+ <label>Limite / condição<input @bind="alarm.Setpoint" maxlength="80" /></label><label>Unidade<input @bind="alarm.Unit" maxlength="40" /></label>
+ <label>Possíveis causas<textarea @bind="alarm.Causes" maxlength="4000"></textarea></label><label>Efeitos / consequências<textarea @bind="alarm.Effects" maxlength="4000"></textarea></label><label>Ação recomendada<textarea @bind="alarm.Action" maxlength="4000"></textarea></label>
+ </div>@if (user.Profile == AccessProfile.Automacao) { <button type="button" class="secondary" @onclick="() => instrument.Alarms.Remove(alarm)">Remover da lista</button> }</fieldset>
+ }
+ @if (instrument.Alarms.Count == 0) { <p class="empty">Nenhum alarme documentado.</p> }
+ @if (user.Profile == AccessProfile.Automacao) { <button disabled="@busy" @onclick="SaveAlarms">Salvar lista de alarmes</button><p class="muted">Inclusões e remoções só são aplicadas ao salvar a lista.</p> }
+ </section>
+ <section class="card"><h2>Fotos e documentos</h2><p>PDF, PNG, JPG, DOCX, XLSX e TXT · até 20 MB por arquivo.</p>
+ @if (user.Profile != AccessProfile.Visualizacao) { <label>Anexar arquivo<InputFile OnChange="Upload" disabled="@busy" accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.txt" /></label> }
+ <ul>@foreach (var file in instrument.Attachments) { <li><a href="/anexos/@file.Id" target="_blank" rel="noopener">@file.FileName</a> <span class="muted">(@((file.Size / 1024d).ToString("N1")) KB)</span></li> }</ul>
+ @if (instrument.Attachments.Count == 0) { <p class="empty">Nenhum anexo cadastrado.</p> }</section>
+ }
+}
+@code {
+ [Parameter] public int Id { get; set; }
+ Instrument? instrument; PortalUser? user; string? message; bool busy;
+ protected override async Task OnParametersSetAsync() { await Run(async () => { user = await Service.Current(); if (user is null) throw new UnauthorizedAccessException("Acesso não autorizado."); instrument = Id == 0 ? new() : await Service.Get(Id); }); }
+ async Task Run(Func<Task> action) { if (busy) return; busy = true; try { await action(); } catch (System.ComponentModel.DataAnnotations.ValidationException ex) { message = ex.Message; } catch (UnauthorizedAccessException ex) { message = ex.Message; } catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException) { message = "O cadastro mudou. Reabra a ficha para carregar a versão atual."; } catch (Exception) { message = "Não foi possível concluir. Verifique os dados ou contate o administrador."; } finally { busy = false; } }
+ Task SaveDetails() => Run(async () => { var id = await Service.Save(instrument!); message = "Cadastro salvo."; if (Id == 0) Navigation.NavigateTo($"/instrumento/{id}"); else instrument = await Service.Get(id); });
+ void AddAlarm() { instrument!.Alarms.Add(new()); }
+ Task SaveAlarms() => Run(async () => { await Service.Save(instrument!, true); instrument = await Service.Get(Id); message = "Alarmes salvos."; });
+ Task Upload(InputFileChangeEventArgs e) => Run(async () => { await Service.Upload(Id, e.File); instrument!.Attachments = (await Service.Get(Id)).Attachments; message = "Arquivo anexado."; });
+}

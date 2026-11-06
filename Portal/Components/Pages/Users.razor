@@ -1,0 +1,20 @@
+@page "/usuarios"
+@inject PortalService Service
+<PageTitle>Controle de acessos</PageTitle>
+<h1>Controle de acessos</h1><p>Cadastre a identidade Windows completa. A senha é validada pelo Windows, sem armazenamento no portal.</p>
+@if (message is not null) { <p class="message" role="status">@message</p> }
+@if (authorized) {
+ <section class="card"><h2>Autorizar ou atualizar usuário</h2><EditForm Model="edit" OnValidSubmit="Save" FormName="user"><DataAnnotationsValidator /><ValidationSummary /><div class="grid">
+ <label>Identidade Windows<InputText @bind-Value="edit.Key" placeholder="DOMÍNIO\chave" /></label>
+ <label>Perfil<InputSelect @bind-Value="edit.Profile">@foreach (var role in Enum.GetValues<AccessProfile>()) { <option value="@role">@role</option> }</InputSelect></label>
+ <label class="check"><InputCheckbox @bind-Value="edit.Active" /> Acesso ativo</label><label class="check"><InputCheckbox @bind-Value="edit.Administrator" /> Administrador de acessos</label></div><button disabled="@busy">Salvar acesso</button></EditForm></section>
+ <section class="card"><h2>Usuários</h2><div class="table-wrap"><table><thead><tr><th>Chave</th><th>Perfil</th><th>Status</th><th>Administrador</th><th></th></tr></thead><tbody>@foreach (var user in users) { <tr><td>@user.Key</td><td>@user.Profile</td><td>@(user.Active ? "Ativo" : "Desativado")</td><td>@(user.Administrator ? "Sim" : "Não")</td><td><button class="secondary" @onclick="() => Edit(user)">Editar</button></td></tr> }</tbody></table></div></section>
+ <section class="card"><h2>Últimas 100 alterações</h2>@foreach (var entry in history) { <p><span class="muted">@entry.At.ToString("dd/MM/yyyy HH:mm") UTC · @entry.User</span><br />@entry.Action</p> }</section>
+}
+@code {
+ bool authorized, busy; string? message; PortalUser edit = new(); List<PortalUser> users = []; List<AuditEntry> history = [];
+ protected override async Task OnInitializedAsync() { try { await Reload(); authorized = true; } catch (UnauthorizedAccessException ex) { message = ex.Message; } }
+ async Task Reload() { users = await Service.Users(); history = await Service.History(); }
+ void Edit(PortalUser user) { edit = new() { Key = user.Key, Profile = user.Profile, Active = user.Active, Administrator = user.Administrator }; }
+ async Task Save() { if (busy) return; busy = true; try { await Service.SaveUser(edit); await Reload(); edit = new(); message = "Permissões atualizadas."; } catch (Exception ex) when (ex is UnauthorizedAccessException or System.ComponentModel.DataAnnotations.ValidationException) { message = ex.Message; } catch { message = "Não foi possível salvar o acesso."; } finally { busy = false; } }
+}

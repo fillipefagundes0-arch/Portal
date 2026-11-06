@@ -1,0 +1,17 @@
+@page "/"
+@inject PortalService Service
+<PageTitle>Instrumentos · Portal de Automação</PageTitle>
+<div class="heading"><div><p class="eyebrow">BASE DE MANUTENÇÃO</p><h1>Instrumentos</h1><p>Consulte instrumentos, alarmes e documentação técnica.</p></div>@if (user is { Profile: not AccessProfile.Visualizacao }) { <a class="button" href="/instrumento/0">+ Cadastrar instrumento</a> }</div>
+@if (error is not null) { <p class="message" role="alert">@error</p> }
+@if (user is not null) {
+ <p class="identity">@user.Key · @user.Profile</p>
+ <form @onsubmit="Search" @onsubmit:preventDefault><label for="search">Buscar por TAG, descrição, área ou alarme</label><div class="search"><input id="search" @bind="query" placeholder="Ex.: PT-101, pressão, utilidades…" /><button>Consultar</button></div></form>
+ <section class="card"><h2>Instrumentos cadastrados <span class="badge">@items.Count</span></h2><div class="table-wrap"><table><thead><tr><th>TAG</th><th>Descrição</th><th>Área</th><th>Fabricante / modelo</th><th></th></tr></thead><tbody>
+ @foreach (var item in items) { <tr><td><strong>@item.Tag</strong></td><td>@item.Description</td><td>@item.Area</td><td>@item.Manufacturer @item.Model</td><td><a href="/instrumento/@item.Id">Abrir ficha →</a></td></tr> }
+ </tbody></table></div>@if (items.Count == 0) { <div class="empty">Nenhum instrumento encontrado. Cadastre o primeiro instrumento ou ajuste a busca.</div> }<p class="muted">Até 200 resultados por consulta.</p></section>
+}
+@code {
+ PortalUser? user; string query = ""; string? error; List<Instrument> items = [];
+ protected override async Task OnInitializedAsync() { try { user = await Service.Current(); if (user is null) error = "Acesso não autorizado. Solicite ao administrador o cadastro da sua identidade Windows (DOMÍNIO\\chave)."; else await Search(); } catch { error = "Não foi possível consultar a base. Contate o administrador."; } }
+ async Task Search() { try { items = await Service.Search(query); error = null; } catch (UnauthorizedAccessException ex) { error = ex.Message; } }
+}
